@@ -20,16 +20,21 @@ const io = new Server(server, {
   },
 });
 
+const saltRounds = 10;
 // --- MongoDB Connection Setup ---
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.1a6g4ks.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri);
 let usersCollection;
-
+let roomsCollection;
 async function run() {
   try {
     await client.connect();
     console.log("MongoDB connected");
     usersCollection = client.db("code-guard").collection("users");
+    roomsCollection = client.db("code-guard").collection("rooms")
+
+    const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`🚀 Server with API and Signaling running on port ${PORT}`));
   } catch (err) {
     console.error("Failed to connect to MongoDB", err);
   }
@@ -196,5 +201,3 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Server with API and Signaling running on port ${PORT}`));
