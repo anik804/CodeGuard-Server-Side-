@@ -19,7 +19,7 @@ let examinersCollection;
 async function run() {
   try {
     await client.connect();
-    console.log("✅ MongoDB connected");
+    console.log("MongoDB connected");
 
     const db = client.db("code-guard");
     studentsCollection = db.collection("students");
@@ -116,9 +116,9 @@ app.post("/login", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.send("✅ Code Guard server is running");
+  res.send("Code Guard server is running");
 });
 
 app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
+  console.log(`Server running on port ${port}`);
 });
