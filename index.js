@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
+const bcrypt = require("bcrypt");
 const { MongoClient } = require("mongodb");
 require("dotenv").config();
 
@@ -60,6 +61,80 @@ app.post("/users", async (req, res) => {
   }
 });
 
+
+
+
+//New Room Creation and management route
+
+//1 This is for the examiner whent he/she wants to create a new room
+
+app.post("/rooms", async (req, res) => {
+    try {
+        if (!roomsCollection) return res.status(503).send({ message: "Database not ready." });
+
+        const { roomId, password } = req.body;
+        if (!roomId || !password) {
+            return res.status(400).send({ message: "Both roomId and password are required." });
+        }
+
+        const existingRoom = await roomsCollection.findOne({ roomId });
+        if (existingRoom) {
+            return res.status(409).send({ message: "A room with this ID already exists." });
+        }
+        
+        
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        const newRoom = {
+            roomId: roomId,
+            password: hashedPassword,
+            createdAt: new Date(),
+        };
+
+        await roomsCollection.insertOne(newRoom);
+        res.status(201).send({ message: "Room created successfully", roomId: newRoom.roomId });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error while creating room" });
+    }
+});
+
+
+//2 validation: for the students who wants to join
+
+app.post("/rooms/validate", async (req, res) => {
+    try {
+        if (!roomsCollection) return res.status(503).send({ message: "Database not ready." });
+        
+        const { roomId, password } = req.body;
+        if (!roomId || !password) {
+            return res.status(400).send({ message: "Both roomId and password are required." });
+        }
+
+        const room = await roomsCollection.findOne({ roomId });
+
+        if (!room) {
+            return res.status(404).send({ success: false, message: "Room not found." });
+        }
+
+        
+        const isMatch = await bcrypt.compare(password, room.password);
+
+        if (isMatch) {
+            res.status(200).send({ success: true, message: "Credentials are valid." });
+        } else {
+            res.status(401).send({ success: false, message: "Invalid password." });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server error while validating credentials" });
+    }
+});
+
+
+
+
 // --- Socket.IO Signaling Logic ---
 const rooms = {}; // Store room information
 
@@ -103,7 +178,7 @@ io.on("connection", (socket) => {
     // Find which room the socket was in and notify others
     for (const roomId in rooms) {
       if (rooms[roomId].examiner === socket.id) {
-        // Examiner disconnected, logic to handle this could be added
+        
         delete rooms[roomId];
         console.log(`Examiner for room ${roomId} disconnected. Room closed.`);
         break;
