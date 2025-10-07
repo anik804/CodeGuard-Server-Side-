@@ -35,6 +35,7 @@ async function run() {
     const db = client.db("code-guard");
     studentsCollection = db.collection("students");
     examinersCollection = db.collection("examiners");
+    roomsCollection = db.collection("rooms")
   } catch (err) {
     console.error(err);
   }
