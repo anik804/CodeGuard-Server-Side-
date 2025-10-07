@@ -274,6 +274,6 @@ app.get("/", (req, res) => {
   res.send("Code Guard server is running");
 });
 
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+server.listen(port, () => {
+  console.log(`Server (Express + Socket.IO) running on port ${port}`);
 });
