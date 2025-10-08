@@ -26,6 +26,8 @@ const io = new Server(server, {
 
 let studentsCollection;
 let examinersCollection;
+const saltRounds = 10;
+let roomsCollection;
 
 async function run() {
   try {
@@ -132,8 +134,7 @@ app.post("/login", async (req, res) => {
 // login & register ends here
 
 // mushfiq code
-const saltRounds = 10;
-let roomsCollection;
+
 //New Room Creation and management route
 //1 This is for the examiner whent he/she wants to create a new room
 app.post("/rooms", async (req, res) => {
