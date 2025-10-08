@@ -29,7 +29,7 @@ let examinersCollection;
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     console.log("MongoDB connected");
 
     const db = client.db("code-guard");
