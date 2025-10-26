@@ -1,5 +1,5 @@
 // Store room information in memory
-const rooms = {}; 
+export const rooms = {}; 
 
 export const initializeSocket = (io) => {
   io.on("connection", (socket) => {

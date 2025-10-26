@@ -8,6 +8,7 @@ let db;
 let studentsCollection;
 let examinersCollection;
 let roomsCollection;
+let activityLogsCollection;
 
 export async function connectDB() {
   try {
@@ -18,8 +19,9 @@ export async function connectDB() {
     studentsCollection = db.collection("students");
     examinersCollection = db.collection("examiners");
     roomsCollection = db.collection("rooms");
+    activityLogsCollection = db.collection("activityLogs")
 
-    return { studentsCollection, examinersCollection, roomsCollection, db };
+    return { studentsCollection, examinersCollection, roomsCollection, db,activityLogsCollection };
   } catch (err) {
     console.error("Failed to connect to MongoDB", err);
     process.exit(1); // Exit process with failure
@@ -27,5 +29,5 @@ export async function connectDB() {
 }
 
 export function getCollections() {
-  return { studentsCollection, examinersCollection, roomsCollection, db };
+  return { studentsCollection, examinersCollection, roomsCollection, db,activityLogsCollection };
 }
