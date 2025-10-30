@@ -36,7 +36,7 @@ initializeSocket(io);
 // --- API Routes ---
 app.use("/api/auth", authRoutes);
 app.use("/api/rooms", roomRoutes);
-app.use("/api/students", studentRoutes); // ✅ now this works
+app.use("/api/students", studentRoutes); 
 
 // Proctoring routes need the 'io' instance to send real-time alerts
 const proctoringRoutes = createProctoringRoutes(io);
