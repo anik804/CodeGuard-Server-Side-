@@ -16,23 +16,32 @@ export const createRoom = async (newRoom) => {
   return await getRoomCollection().insertOne(newRoom);
 };
 
-export const updateRoomQuestion = async (roomId, questionUrl) => {
+// Store Cloudinary URL in MongoDB
+export const updateRoomQuestion = async (roomId, cloudinaryUrl, fileName = 'question.pdf') => {
   return await getRoomCollection().updateOne(
     { roomId },
     { 
       $set: { 
-        questionPdfUrl: questionUrl,
+        questionPdfUrl: cloudinaryUrl,
+        questionFileName: fileName,
         questionUploadedAt: new Date()
       } 
     }
   );
 };
 
+// Get Cloudinary URL from MongoDB
 export const getRoomQuestion = async (roomId) => {
   const room = await getRoomCollection().findOne(
     { roomId },
-    { projection: { questionPdfUrl: 1, questionUploadedAt: 1 } }
+    { projection: { questionPdfUrl: 1, questionFileName: 1, questionUploadedAt: 1 } }
   );
-  return room?.questionPdfUrl || null;
+  if (room?.questionPdfUrl) {
+    return {
+      url: room.questionPdfUrl,
+      fileName: room.questionFileName || 'question.pdf'
+    };
+  }
+  return null;
 };
 

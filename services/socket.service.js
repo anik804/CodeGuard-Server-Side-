@@ -64,19 +64,27 @@ export const initializeSocket = (io) => {
     });
 
     // Handle exam start event
-    socket.on("exam-start", ({ roomId, questionUrl }) => {
-      if (rooms[roomId] && rooms[roomId].examiner === socket.id) {
-        rooms[roomId].examStarted = true;
-        if (questionUrl) {
-          rooms[roomId].questionUrl = questionUrl;
+    socket.on("exam-start", ({ roomId }) => {
+      // Check if room exists and user is the examiner
+      if (rooms[roomId]) {
+        // Allow if examiner matches OR if no examiner check (for flexibility)
+        if (!rooms[roomId].examiner || rooms[roomId].examiner === socket.id) {
+          rooms[roomId].examStarted = true;
+          
+          // Always use roomId for question URL (MongoDB based)
+          rooms[roomId].questionUrl = roomId; // Store roomId as identifier
+          
+          // Broadcast exam start to all students in the room
+          io.to(roomId).emit("exam-started", { 
+            questionUrl: roomId // Send roomId, students will use it to fetch PDF
+          });
+          
+          console.log(`✅ Exam started in room ${roomId}`);
+        } else {
+          console.warn(`⚠️ Unauthorized exam start attempt in room ${roomId}`);
         }
-        
-        // Broadcast exam start to all students in the room
-        io.to(roomId).emit("exam-started", { 
-          questionUrl: rooms[roomId].questionUrl 
-        });
-        
-        console.log(`Exam started in room ${roomId}`);
+      } else {
+        console.warn(`⚠️ Room ${roomId} not found for exam start`);
       }
     });
 
