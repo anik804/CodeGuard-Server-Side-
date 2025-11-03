@@ -65,3 +65,36 @@ export const flagStudentActivity = (io) => async (req, res) => {
     res.status(500).send({ message: "Internal server error" });
   }
 };
+
+// 📋 Get activity logs for a specific room
+export const getActivityLogs = async (req, res) => {
+  try {
+    const { roomId } = req.query;
+
+    if (!roomId) {
+      return res.status(400).send({ 
+        success: false,
+        message: "Room ID is required" 
+      });
+    }
+
+    const { activityLogsCollection } = getCollections();
+
+    // Fetch logs for this room, sorted by most recent first
+    const logs = await activityLogsCollection
+      .find({ roomId })
+      .sort({ timestamp: -1 })
+      .toArray();
+
+    res.status(200).send({
+      success: true,
+      logs: logs
+    });
+  } catch (err) {
+    console.error("❌ Error fetching activity logs:", err);
+    res.status(500).send({ 
+      success: false,
+      message: "Internal server error" 
+    });
+  }
+};
