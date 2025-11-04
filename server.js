@@ -17,7 +17,13 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // --- Middleware ---
-app.use(cors());
+// CORS configuration - allow specific origin with credentials
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json({ limit: "10mb" })); // Increase JSON payload limit for Base64 screenshots
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -36,7 +42,7 @@ initializeSocket(io);
 // --- API Routes ---
 app.use("/api/auth", authRoutes);
 app.use("/api/rooms", roomRoutes);
-app.use("/api/students", studentRoutes); // ✅ now this works
+app.use("/api/students", studentRoutes); 
 
 // Proctoring routes need the 'io' instance to send real-time alerts
 const proctoringRoutes = createProctoringRoutes(io);
