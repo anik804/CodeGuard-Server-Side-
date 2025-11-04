@@ -93,10 +93,33 @@ export const initializeSocket = (io) => {
       if (rooms[roomId] && rooms[roomId].examiner === socket.id) {
         rooms[roomId].examStarted = false;
         
-        // Notify all students
-        io.to(roomId).emit("exam-ended");
+        // Notify all students to disconnect and stop screen sharing
+        io.to(roomId).emit("exam-ended", { 
+          message: "Exam has ended. Please disconnect.",
+          disconnect: true 
+        });
         
-        console.log(`Exam ended in room ${roomId}`);
+        // Disconnect all students in the room
+        const students = rooms[roomId].students || [];
+        students.forEach((student) => {
+          io.to(student.socketId).emit("force-disconnect");
+          io.sockets.sockets.get(student.socketId)?.disconnect();
+        });
+        
+        console.log(`Exam ended in room ${roomId}, all students disconnected`);
+      }
+    });
+
+    // Handle question uploaded after exam start
+    socket.on("question-uploaded", ({ roomId }) => {
+      if (rooms[roomId] && rooms[roomId].examiner === socket.id) {
+        // If exam is already started, send question to all students immediately
+        if (rooms[roomId].examStarted) {
+          io.to(roomId).emit("exam-started", { 
+            questionUrl: roomId // Send roomId, students will use it to fetch PDF
+          });
+          console.log(`📚 Question uploaded and sent to all students in room ${roomId}`);
+        }
       }
     });
 
