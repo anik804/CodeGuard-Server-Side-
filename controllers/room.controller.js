@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import { RoomService } from "../services/room.service.js";
 import * as roomModel from "../models/room.model.js";
 import multer from "multer";
 import path from "path";
@@ -6,7 +6,6 @@ import { fileURLToPath } from "url";
 import fs, { access } from "fs";
 import { imagekit } from "../config/imagekit.js";
 import { rooms } from "../services/socket.service.js";
-const saltRounds = 10;
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -45,41 +44,22 @@ export const upload = multer({
 
 export const createNewRoom = async (req, res) => {
   try {
-    const { roomId, password, courseName, examDuration, examDescription, examSubject, maxStudents, proctoringLevel, startTime } = req.body;
+    const { roomId, password, ...otherData } = req.body;
     if (!roomId || !password) {
       return res
         .status(400)
         .send({ message: "Both roomId and password are required." });
     }
 
-    const existingRoom = await roomModel.findRoomById(roomId);
-    if (existingRoom) {
-      return res
-        .status(409)
-        .send({ message: "A room with this ID already exists." });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    const newRoom = {
-      roomId: roomId,
-      password: hashedPassword,
-      courseName: courseName || null,
-      examDuration: examDuration ? parseInt(examDuration) : null,
-      examDescription: examDescription || null,
-      examSubject: examSubject || null,
-      maxStudents: maxStudents ? parseInt(maxStudents) : null,
-      proctoringLevel: proctoringLevel || null,
-      startTime: startTime || null,
-      createdAt: new Date(),
-    };
-
-    await roomModel.createRoom(newRoom);
+    await RoomService.createRoom({ roomId, password, ...otherData });
     res
       .status(201)
-      .send({ message: "Room created successfully", roomId: newRoom.roomId });
+      .send({ message: "Room created successfully", roomId });
   } catch (err) {
     console.error(err);
+    if (err.message === "A room with this ID already exists.") {
+      return res.status(409).send({ message: err.message });
+    }
     res.status(500).send({ message: "Server error while creating room" });
   }
 };
@@ -94,19 +74,13 @@ export const updateExamDetails = async (req, res) => {
       return res.status(400).send({ message: "Room ID is required." });
     }
 
-    const room = await roomModel.findRoomById(roomId);
-    if (!room) {
-      return res.status(404).send({ message: "Room not found." });
-    }
-
-    await roomModel.updateRoomExamDetails(roomId, {
-      courseName,
-      examDuration: examDuration ? parseInt(examDuration) : null,
-    });
-
+    await RoomService.updateExamDetails(roomId, { courseName, examDuration });
     res.status(200).send({ message: "Exam details updated successfully" });
   } catch (err) {
     console.error(err);
+    if (err.message === "Room not found.") {
+      return res.status(404).send({ message: err.message });
+    }
     res.status(500).send({ message: "Server error while updating exam details" });
   }
 };
@@ -115,18 +89,17 @@ export const updateExamDetails = async (req, res) => {
 export const getExamDetails = async (req, res) => {
   try {
     const { roomId } = req.params;
-    const room = await roomModel.getRoomWithExamDetails(roomId);
+    const room = await RoomService.getExamDetails(roomId);
     
-    if (!room) {
-      return res.status(404).send({ message: "Room not found." });
-    }
-
     res.status(200).json({
       success: true,
       room: room
     });
   } catch (err) {
     console.error(err);
+    if (err.message === "Room not found.") {
+      return res.status(404).send({ message: err.message });
+    }
     res.status(500).send({ message: "Server error while fetching exam details" });
   }
 };
@@ -140,28 +113,17 @@ export const validateRoomCredentials = async (req, res) => {
         .send({ message: "Both roomId and password are required." });
     }
 
-    const room = await roomModel.findRoomById(roomId);
-
-    if (!room) {
-      return res
-        .status(404)
-        .send({ success: false, message: "Room not found." });
-    }
-
-    const isMatch = await bcrypt.compare(password, room.password);
-
-    if (isMatch) {
-      res
-        .status(200)
-        .send({ success: true, message: "Credentials are valid." });
-    } else {
-      res.status(401).send({ success: false, message: "Invalid password." });
-    }
+    await RoomService.validateRoomCredentials(roomId, password);
+    res.status(200).send({ success: true, message: "Credentials are valid." });
   } catch (err) {
     console.error(err);
-    res
-      .status(500)
-      .send({ message: "Server error while validating credentials" });
+    if (err.message === "Room not found.") {
+      return res.status(404).send({ success: false, message: err.message });
+    }
+    if (err.message === "Invalid password.") {
+      return res.status(401).send({ success: false, message: err.message });
+    }
+    res.status(500).send({ message: "Server error while validating credentials" });
   }
 };
 
@@ -209,7 +171,7 @@ export const uploadExamQuestion = async (req, res) => {
     }
 
     // Check if room exists
-    const room = await roomModel.findRoomById(roomId);
+    const room = await RoomService.getExamDetails(roomId);
     if (!room) {
       console.error(`❌ Room not found: ${roomId}`);
       return res.status(404).json({
@@ -329,7 +291,7 @@ export const uploadExamQuestion = async (req, res) => {
       }
 
       // Save the fileId and filePath (NOT the URL) - we'll generate signed URLs on demand
-      await roomModel.updateRoomQuestion(
+      await RoomService.updateRoomQuestion(
         roomId,
         result.fileId, // Save ImageKit fileId (equivalent to public_id)
         fileName,
@@ -403,7 +365,7 @@ export const getExamQuestion = async (req, res) => {
       });
     }
 
-    const questionData = await roomModel.getRoomQuestion(roomId);
+    const questionData = await RoomService.getRoomQuestion(roomId);
 
     if (!questionData) {
       return res.status(404).json({
@@ -445,7 +407,7 @@ export const getExamQuestionProxy = async (req, res) => {
     console.log(`📥 Request to download PDF for room: ${roomId}`);
 
     // Fetch the fileId from your database
-    const questionData = await roomModel.getRoomQuestion(roomId);
+    const questionData = await RoomService.getRoomQuestion(roomId);
 
     if (!questionData || !questionData.public_id) {
       return res.status(404).json({
