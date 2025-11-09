@@ -18,10 +18,12 @@ router.options("/:roomId/question/download", (req, res) => {
 });
 
 router.post("/", roomController.createNewRoom);
+router.get("/by-examiner", roomController.getRoomsByExaminer);
 router.post("/validate", roomController.validateRoomCredentials);
 router.put("/:roomId/exam-details", roomController.updateExamDetails);
 router.get("/:roomId/exam-details", roomController.getExamDetails);
 router.get("/:roomId/students", roomController.getRoomStudents);
+router.get("/:roomId/attendance/export", roomController.exportAttendance);
 router.post("/:roomId/question", roomController.upload.single('question'), roomController.uploadExamQuestion);
 router.get("/:roomId/question", roomController.getExamQuestion);
 router.get("/:roomId/question/download", roomController.getExamQuestionProxy);
