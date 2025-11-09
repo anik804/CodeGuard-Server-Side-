@@ -192,3 +192,90 @@ export const refreshAnalytics = async (req, res) => {
   }
 };
 
+// Get students per exam for a specific examiner
+export const getStudentsPerExamForExaminer = async (req, res) => {
+  try {
+    const { examinerId, examinerUsername } = req.query;
+    
+    if (!examinerId && !examinerUsername) {
+      return res.status(400).json({
+        success: false,
+        message: "examinerId or examinerUsername is required"
+      });
+    }
+
+    const { AnalyticsService } = await import("../services/analytics.service.js");
+    const stats = await AnalyticsService.getStudentsPerExamForExaminer(examinerId, examinerUsername);
+    
+    res.status(200).json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error("Error fetching students per exam for examiner:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch students per exam",
+      error: error.message
+    });
+  }
+};
+
+// Get rooms created by examiner
+export const getRoomsCreatedByExaminer = async (req, res) => {
+  try {
+    const { examinerId, examinerUsername } = req.query;
+    
+    if (!examinerId && !examinerUsername) {
+      return res.status(400).json({
+        success: false,
+        message: "examinerId or examinerUsername is required"
+      });
+    }
+
+    const { AnalyticsService } = await import("../services/analytics.service.js");
+    const stats = await AnalyticsService.getRoomsCreatedByExaminer(examinerId, examinerUsername);
+    
+    res.status(200).json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error("Error fetching rooms created by examiner:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch rooms created",
+      error: error.message
+    });
+  }
+};
+
+// Get student exam history
+export const getStudentExamHistory = async (req, res) => {
+  try {
+    const { studentId } = req.query;
+    
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "studentId is required"
+      });
+    }
+
+    const { AnalyticsService } = await import("../services/analytics.service.js");
+    const history = await AnalyticsService.getStudentExamHistory(studentId);
+    
+    res.status(200).json({
+      success: true,
+      data: history
+    });
+  } catch (error) {
+    console.error("Error fetching student exam history:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch student exam history",
+      error: error.message
+    });
+  }
+};
+

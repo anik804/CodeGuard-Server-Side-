@@ -34,6 +34,10 @@ export const getBlacklist = async (req, res) => {
       "classroom.google.com",
       "accounts.google.com",
       "google.co.in",
+      // ImageKit domains for viewing/downloading exam questions
+      "ik.imagekit.io",
+      "imagekit.io",
+      "*.imagekit.io",
     ];
     
     // Merge default with room-specific allowed websites
@@ -65,6 +69,10 @@ export const getBlacklist = async (req, res) => {
       "classroom.google.com",
       "accounts.google.com",
       "google.co.in",
+      // ImageKit domains for viewing/downloading exam questions
+      "ik.imagekit.io",
+      "imagekit.io",
+      "*.imagekit.io",
     ];
     res.status(200).send({
       allowedWebsites: defaultAllowed,
@@ -264,6 +272,7 @@ export const flagStudentActivity = (io) => async (req, res) => {
 
     // Use illegalUrl or blockedUrl (whichever is provided)
     const url = illegalUrl || blockedUrl;
+    const { actionType } = req.body; // 'search' or 'navigate' - extension should send this
 
     // Validate required fields
     if (!studentId || !roomId || !url) {
@@ -271,6 +280,61 @@ export const flagStudentActivity = (io) => async (req, res) => {
       return res.status(400).send({ 
         success: false,
         message: "Missing required fields: studentId, roomId, and url are required" 
+      });
+    }
+
+    // ✅ Validate that room exists
+    if (!rooms[roomId]) {
+      console.warn(`⚠️ Flag rejected: Room ${roomId} does not exist`);
+      return res.status(404).send({ 
+        success: false,
+        message: "Room not found. Student must join the exam room first.",
+        ignored: true
+      });
+    }
+
+    // ✅ Validate that student is actually in the room
+    const room = rooms[roomId];
+    const studentInRoom = room.students && room.students.some(
+      s => s.studentId === studentId || s.socketId === studentId
+    );
+
+    if (!studentInRoom) {
+      console.warn(`⚠️ Flag rejected: Student ${studentId} is not in room ${roomId}`);
+      console.warn(`⚠️ Room students:`, room.students?.map(s => ({ studentId: s.studentId, socketId: s.socketId })));
+      return res.status(403).send({ 
+        success: false,
+        message: "Student not in room. Please join the exam room first.",
+        ignored: true
+      });
+    }
+
+    // ✅ Only accept flags if exam has started
+    if (!room.examStarted) {
+      console.log(`ℹ️ Flag ignored: Exam not started yet in room ${roomId}`);
+      return res.status(200).send({ 
+        success: true,
+        message: "Flag ignored: Exam has not started yet.",
+        ignored: true
+      });
+    }
+
+    // 🚫 Filter out search queries - only flag actual website visits
+    // If actionType is 'search', ignore it (extension should send this)
+    // Also check if URL looks like a search query (fallback)
+    const isSearchQuery = actionType === 'search' || 
+      url.includes('google.com/search') || 
+      url.includes('bing.com/search') ||
+      url.includes('yahoo.com/search') ||
+      url.includes('/search?') ||
+      url.match(/^[^/]*\/search/); // Any domain with /search path
+    
+    if (isSearchQuery) {
+      console.log(`🔍 Ignoring search query from student ${studentId}: ${url}`);
+      return res.status(200).send({ 
+        success: true,
+        message: "Search query ignored (not flagged)",
+        ignored: true
       });
     }
 
