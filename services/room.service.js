@@ -29,6 +29,14 @@ export class RoomService {
       createdAt: new Date(),
     };
 
+    console.log("📝 Creating room with data:", {
+      roomId: newRoom.roomId,
+      examinerId: newRoom.examinerId,
+      examinerUsername: newRoom.examinerUsername,
+      examName: newRoom.examName,
+      startTime: newRoom.startTime
+    });
+
     return await roomModel.createRoom(newRoom);
   }
 

@@ -268,6 +268,171 @@ export class AnalyticsService {
   }
 
   /**
+   * Get students per exam for a specific examiner
+   */
+  static async getStudentsPerExamForExaminer(examinerId, examinerUsername) {
+    const { roomsCollection, activityLogsCollection } = getCollections();
+    const socketModule = await import("../services/socket.service.js");
+    const rooms = socketModule.rooms;
+
+    // Build query for examiner
+    const examinerQuery = {};
+    if (examinerId) examinerQuery.examinerId = examinerId;
+    if (examinerUsername) examinerQuery.examinerUsername = examinerUsername;
+    if (examinerId && examinerUsername) {
+      examinerQuery.$or = [
+        { examinerId },
+        { examinerUsername }
+      ];
+      delete examinerQuery.examinerId;
+      delete examinerQuery.examinerUsername;
+    }
+
+    // Get all rooms created by this examiner
+    const examinerRooms = await roomsCollection.find(examinerQuery).toArray();
+
+    const examStats = [];
+    for (const room of examinerRooms) {
+      // Get students from socket (active) or activity logs (historical)
+      const socketRoom = rooms[room.roomId];
+      const activeStudents = socketRoom ? socketRoom.students.length : 0;
+      
+      // Get unique students from activity logs
+      const uniqueStudents = await activityLogsCollection.distinct("studentId", { roomId: room.roomId });
+      
+      // Get student names from activity logs
+      const studentLogs = await activityLogsCollection.find(
+        { roomId: room.roomId },
+        { projection: { studentId: 1, studentName: 1 } }
+      ).toArray();
+      
+      const studentMap = new Map();
+      studentLogs.forEach(log => {
+        if (log.studentId && log.studentName) {
+          studentMap.set(log.studentId, log.studentName);
+        }
+      });
+
+      examStats.push({
+        roomId: room.roomId,
+        examName: room.examName || room.courseName || room.roomId,
+        createdAt: room.createdAt,
+        startTime: room.startTime,
+        totalStudentsJoined: Math.max(activeStudents, uniqueStudents.length),
+        uniqueStudentsCount: uniqueStudents.length,
+        students: uniqueStudents.map(id => ({
+          studentId: id,
+          studentName: studentMap.get(id) || "Unknown"
+        }))
+      });
+    }
+
+    return examStats.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }
+
+  /**
+   * Get rooms created count for a specific examiner
+   */
+  static async getRoomsCreatedByExaminer(examinerId, examinerUsername) {
+    const { roomsCollection } = getCollections();
+
+    const query = {};
+    if (examinerId) query.examinerId = examinerId;
+    if (examinerUsername) query.examinerUsername = examinerUsername;
+    if (examinerId && examinerUsername) {
+      query.$or = [
+        { examinerId },
+        { examinerUsername }
+      ];
+      delete query.examinerId;
+      delete query.examinerUsername;
+    }
+
+    const totalRooms = await roomsCollection.countDocuments(query);
+    const rooms = await roomsCollection.find(query, {
+      projection: {
+        roomId: 1,
+        examName: 1,
+        courseName: 1,
+        createdAt: 1,
+        startTime: 1,
+        examDuration: 1
+      }
+    }).sort({ createdAt: -1 }).toArray();
+
+    return {
+      totalRooms,
+      rooms
+    };
+  }
+
+  /**
+   * Get exam history for a specific student (exams taken under different examiners)
+   */
+  static async getStudentExamHistory(studentId) {
+    const { activityLogsCollection, roomsCollection } = getCollections();
+
+    // Get all rooms this student has participated in (via activity logs)
+    const studentLogs = await activityLogsCollection.find(
+      { studentId },
+      { projection: { roomId: 1, studentName: 1, timestamp: 1 } }
+    ).toArray();
+
+    const uniqueRoomIds = [...new Set(studentLogs.map(log => log.roomId))];
+    
+    const examHistory = [];
+    for (const roomId of uniqueRoomIds) {
+      const room = await roomsCollection.findOne(
+        { roomId },
+        { projection: { examinerId: 1, examinerUsername: 1, examinerName: 1, examName: 1, courseName: 1, createdAt: 1, startTime: 1 } }
+      );
+
+      if (room) {
+        // Get first and last activity timestamp for this student in this room
+        const roomLogs = studentLogs.filter(log => log.roomId === roomId);
+        const timestamps = roomLogs.map(log => new Date(log.timestamp)).sort((a, b) => a - b);
+        
+        examHistory.push({
+          roomId,
+          examName: room.examName || room.courseName || roomId,
+          examinerId: room.examinerId,
+          examinerUsername: room.examinerUsername,
+          examinerName: room.examinerName || room.examinerUsername || "Unknown",
+          examDate: room.startTime || room.createdAt,
+          firstActivity: timestamps[0] || null,
+          lastActivity: timestamps[timestamps.length - 1] || null,
+          activityCount: roomLogs.length
+        });
+      }
+    }
+
+    // Group by examiner
+    const byExaminer = {};
+    examHistory.forEach(exam => {
+      const examinerKey = exam.examinerUsername || exam.examinerId || "unknown";
+      if (!byExaminer[examinerKey]) {
+        byExaminer[examinerKey] = {
+          examinerId: exam.examinerId,
+          examinerUsername: exam.examinerUsername,
+          examinerName: exam.examinerName,
+          exams: []
+        };
+      }
+      byExaminer[examinerKey].exams.push(exam);
+    });
+
+    return {
+      totalExams: examHistory.length,
+      totalExaminers: Object.keys(byExaminer).length,
+      examHistory: examHistory.sort((a, b) => new Date(b.examDate) - new Date(a.examDate)),
+      byExaminer: Object.values(byExaminer).map(examiner => ({
+        ...examiner,
+        examCount: examiner.exams.length
+      }))
+    };
+  }
+
+  /**
    * Get institutions and organizations count
    */
   static async getInstitutionsCount() {

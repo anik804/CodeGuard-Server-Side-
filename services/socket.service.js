@@ -147,6 +147,68 @@ export const initializeSocket = (io) => {
       });
     });
 
+    // Handle student leave request
+    socket.on("student-request-leave", ({ roomId, studentId, studentName, reason }) => {
+      if (rooms[roomId]) {
+        const examinerSocketId = rooms[roomId].examiner;
+        if (examinerSocketId) {
+          io.to(examinerSocketId).emit("student-leave-request", {
+            studentId,
+            studentName: studentName || "Student",
+            socketId: socket.id,
+            reason: reason || "No reason provided",
+            timestamp: new Date()
+          });
+          console.log(`📤 Student ${studentId} requested to leave room ${roomId}`);
+        }
+      }
+    });
+
+    // Handle examiner response to leave request
+    socket.on("examiner-respond-leave", ({ roomId, studentSocketId, approved }) => {
+      if (rooms[roomId] && rooms[roomId].examiner === socket.id) {
+        if (approved) {
+          // Notify student they can leave
+          io.to(studentSocketId).emit("leave-request-approved", {
+            message: "Your leave request has been approved. You may now exit the exam."
+          });
+          console.log(`✅ Examiner approved leave request for student ${studentSocketId}`);
+        } else {
+          // Notify student request denied
+          io.to(studentSocketId).emit("leave-request-denied", {
+            message: "Your leave request has been denied. Please continue with the exam."
+          });
+          console.log(`❌ Examiner denied leave request for student ${studentSocketId}`);
+        }
+      }
+    });
+
+    // Handle examiner kick student
+    socket.on("examiner-kick-student", ({ roomId, studentSocketId, reason }) => {
+      if (rooms[roomId] && rooms[roomId].examiner === socket.id) {
+        // Notify student they've been kicked
+        io.to(studentSocketId).emit("student-kicked", {
+          message: reason || "You have been removed from the exam by the examiner.",
+          reason: reason || "Removed by examiner"
+        });
+        
+        // Force disconnect the student
+        io.to(studentSocketId).emit("force-disconnect");
+        const studentSocket = io.sockets.sockets.get(studentSocketId);
+        if (studentSocket) {
+          studentSocket.disconnect();
+        }
+
+        // Remove from room
+        const studentIndex = rooms[roomId].students.findIndex(s => s.socketId === studentSocketId);
+        if (studentIndex > -1) {
+          const studentInfo = rooms[roomId].students[studentIndex];
+          rooms[roomId].students.splice(studentIndex, 1);
+          console.log(`🚫 Examiner kicked student ${studentInfo.name} (${studentInfo.studentId}) from room ${roomId}`);
+        }
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log(`User disconnected: ${socket.id}`);
       // Find which room the socket was in and notify others

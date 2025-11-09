@@ -18,6 +18,9 @@ router.get("/connected-users", analyticsController.getConnectedUsersCount);
 router.get("/monthly-stats", analyticsController.getMonthlyStats);
 router.get("/rooms-by-examiner", analyticsController.getExamRoomsByExaminer);
 router.get("/institutions", analyticsController.getInstitutionsCount);
+router.get("/examiner/students-per-exam", analyticsController.getStudentsPerExamForExaminer);
+router.get("/examiner/rooms-created", analyticsController.getRoomsCreatedByExaminer);
+router.get("/student/exam-history", analyticsController.getStudentExamHistory);
 router.get("/impact", analyticsController.getImpactMetrics);
 
 export default router;
