@@ -12,8 +12,10 @@ import {
 const createProctoringRoutes = (io) => {
   const router = express.Router();
 
-  // Route for the extension to get the list of banned sites
+  // Route for the extension to get the list of monitored sites (monitoring mode - no blocking)
   router.get("/blacklist", getBlacklist);
+  // Alias for whitelist endpoint (extension uses this)
+  router.get("/whitelist", getBlacklist);
   
   // Route to get activity logs for a room
   router.get("/logs", getActivityLogs);
