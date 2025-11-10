@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import fs, { access } from "fs";
 import { imagekit } from "../config/imagekit.js";
 import { rooms } from "../services/socket.service.js";
+import { getCollections } from "../config/db.js";
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -101,6 +102,60 @@ export const getExamDetails = async (req, res) => {
       return res.status(404).send({ message: err.message });
     }
     res.status(500).send({ message: "Server error while fetching exam details" });
+  }
+};
+
+// Get rooms by examiner
+export const getRoomsByExaminer = async (req, res) => {
+  try {
+    const { examinerId, examinerUsername } = req.query;
+    
+    console.log("🔍 Fetching rooms for examiner:", { examinerId, examinerUsername });
+    
+    if (!examinerId && !examinerUsername) {
+      return res.status(400).send({ 
+        success: false,
+        message: "examinerId or examinerUsername is required" 
+      });
+    }
+
+    const { roomsCollection } = getCollections();
+    
+    // Build query - use OR logic to check both fields
+    const query = {
+      $or: []
+    };
+    
+    if (examinerId) {
+      query.$or.push({ examinerId });
+    }
+    if (examinerUsername) {
+      query.$or.push({ examinerUsername });
+    }
+    
+    // If only one provided, simplify query
+    if (query.$or.length === 1) {
+      const rooms = await roomsCollection.find(query.$or[0]).sort({ createdAt: -1 }).toArray();
+      console.log(`✅ Found ${rooms.length} rooms for examiner`);
+      return res.status(200).json({
+        success: true,
+        rooms: rooms
+      });
+    }
+    
+    const rooms = await roomsCollection.find(query).sort({ createdAt: -1 }).toArray();
+    console.log(`✅ Found ${rooms.length} rooms for examiner`);
+    
+    res.status(200).json({
+      success: true,
+      rooms: rooms
+    });
+  } catch (err) {
+    console.error("❌ Error fetching rooms by examiner:", err);
+    res.status(500).send({ 
+      success: false,
+      message: "Internal server error while fetching rooms" 
+    });
   }
 };
 
@@ -530,6 +585,192 @@ export const getRoomStudents = async (req, res) => {
     res.status(500).send({ 
       success: false,
       message: "Internal server error" 
+    });
+  }
+};
+
+// Export attendance as CSV
+export const exportAttendance = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+
+    if (!roomId) {
+      return res.status(400).send({ 
+        success: false,
+        message: "Room ID is required" 
+      });
+    }
+
+    // Get room details
+    const room = await RoomService.getExamDetails(roomId);
+    if (!room) {
+      return res.status(404).send({ 
+        success: false,
+        message: "Room not found" 
+      });
+    }
+
+    // Get collections
+    const { activityLogsCollection, studentSubmissionsCollection } = getCollections();
+
+    // Get all students who joined (from socket service or activity logs)
+    const socketRoom = rooms[roomId];
+    const socketStudents = socketRoom?.students || [];
+    
+    // Get all unique students from activity logs (in case socket data is cleared)
+    const allActivityLogs = await activityLogsCollection.find({ roomId }).toArray();
+    
+    // Create a map of student names from activity logs (most recent name per student)
+    const studentNamesFromLogs = new Map();
+    allActivityLogs.forEach(log => {
+      if (log.studentId && log.studentName) {
+        const existing = studentNamesFromLogs.get(log.studentId);
+        // Use the most recent name if multiple entries exist
+        if (!existing || 
+            (log.timestamp && existing.timestamp && new Date(log.timestamp) > new Date(existing.timestamp))) {
+          studentNamesFromLogs.set(log.studentId, {
+            name: log.studentName,
+            timestamp: log.timestamp || new Date()
+          });
+        }
+      }
+    });
+    
+    const studentsFromLogs = [...new Set(allActivityLogs.map(log => ({
+      studentId: log.studentId,
+      studentName: log.studentName || "Unknown",
+      joinedAt: log.timestamp
+    })))];
+
+    // Merge students from socket and logs, prioritizing socket data
+    const allStudentsMap = new Map();
+    
+    // Add socket students first (most current)
+    socketStudents.forEach(student => {
+      allStudentsMap.set(student.studentId, {
+        studentId: student.studentId,
+        name: student.name || "Unknown",
+        joinedAt: student.joinedAt || new Date(),
+        source: 'socket'
+      });
+    });
+    
+    // Add students from logs if not already present
+    studentsFromLogs.forEach(student => {
+      if (!allStudentsMap.has(student.studentId)) {
+        allStudentsMap.set(student.studentId, {
+          studentId: student.studentId,
+          name: student.studentName || "Unknown",
+          joinedAt: student.joinedAt || new Date(),
+          source: 'logs'
+        });
+      }
+    });
+
+    const allStudents = Array.from(allStudentsMap.values());
+
+    // Get flagged students
+    const flaggedStudents = await activityLogsCollection.distinct("studentId", { roomId });
+    const flaggedSet = new Set(flaggedStudents);
+
+    // Get students who uploaded work
+    const submissions = await studentSubmissionsCollection.find({ roomId }).toArray();
+    const studentsWithSubmissions = new Set(submissions.map(s => s.studentId));
+    
+    // Create a map of student names from submissions (in case name is missing elsewhere)
+    const studentNamesFromSubmissions = new Map();
+    submissions.forEach(sub => {
+      if (sub.studentId && sub.studentName) {
+        studentNamesFromSubmissions.set(sub.studentId, sub.studentName);
+      }
+    });
+
+    // Track students who left with permission (from leave-request-approved events)
+    // We'll check if student is not in socket room but has activity logs (likely left with permission)
+    const studentsWhoLeft = new Set();
+    socketStudents.forEach(student => {
+      // If student is still in socket room, they didn't leave
+      // If not in socket room but has logs, they likely left
+    });
+    
+    // For now, mark students as "Present" if they're in socket room OR have submissions
+    // Mark as "Left with Permission" if they have submissions but not in socket room
+    // Mark as "Present" if exam ended and they were in room at that time
+
+    // Prepare CSV data
+    const csvRows = [];
+    csvRows.push("Student ID,Student Name,Joined At,Attendance Status,Uploaded Work,Flagged");
+    
+    allStudents.forEach(student => {
+      const joinedAt = student.joinedAt ? new Date(student.joinedAt).toLocaleString() : "N/A";
+      const isFlagged = flaggedSet.has(student.studentId);
+      const hasSubmission = studentsWithSubmissions.has(student.studentId);
+      const isStillInRoom = socketStudents.some(s => s.studentId === student.studentId);
+      
+      // Get student name - prioritize from socket, then submissions, then logs
+      let studentName = student.name || "Unknown";
+      
+      // If still unknown, try to get from socket students (most current)
+      if (!studentName || studentName === "Unknown") {
+        const socketStudent = socketStudents.find(s => s.studentId === student.studentId);
+        if (socketStudent && socketStudent.name) {
+          studentName = socketStudent.name;
+        }
+      }
+      
+      // If still unknown, try to get name from submissions
+      if (!studentName || studentName === "Unknown") {
+        const nameFromSubmissions = studentNamesFromSubmissions.get(student.studentId);
+        if (nameFromSubmissions) {
+          studentName = nameFromSubmissions;
+        }
+      }
+      
+      // If still unknown, try to get name from activity logs
+      if (!studentName || studentName === "Unknown") {
+        const nameFromLogs = studentNamesFromLogs.get(student.studentId);
+        if (nameFromLogs && nameFromLogs.name) {
+          studentName = nameFromLogs.name;
+        }
+      }
+      
+      // Determine attendance status
+      let attendanceStatus = "Present";
+      if (hasSubmission && !isStillInRoom) {
+        attendanceStatus = "Left with Permission";
+      } else if (hasSubmission) {
+        attendanceStatus = "Present (Work Submitted)";
+      } else if (isStillInRoom) {
+        attendanceStatus = "Present";
+      } else {
+        // Student not in room and no submission - mark as present if they have activity logs
+        attendanceStatus = "Present";
+      }
+      
+      csvRows.push(
+        `"${student.studentId || 'N/A'}","${studentName || 'Unknown'}","${joinedAt}","${attendanceStatus}","${hasSubmission ? 'Yes' : 'No'}","${isFlagged ? 'Yes' : 'No'}"`
+      );
+    });
+
+    // Add summary at the end
+    csvRows.push("");
+    csvRows.push(`Total Students,${allStudents.length}`);
+    csvRows.push(`Students Present,${socketStudents.length}`);
+    csvRows.push(`Students with Submissions,${studentsWithSubmissions.size}`);
+    csvRows.push(`Flagged Students,${flaggedStudents.length}`);
+    csvRows.push(`Normal Students,${allStudents.length - flaggedStudents.length}`);
+
+    const csvContent = csvRows.join("\n");
+
+    // Set headers for CSV download
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="attendance_${roomId}_${Date.now()}.csv"`);
+    res.status(200).send(csvContent);
+  } catch (err) {
+    console.error("❌ Error exporting attendance:", err);
+    res.status(500).send({ 
+      success: false,
+      message: "Internal server error while exporting attendance" 
     });
   }
 };
