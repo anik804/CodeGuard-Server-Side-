@@ -37,6 +37,7 @@ export const getRoomWithExamDetails = async (roomId) => {
     { roomId },
     { projection: { 
       roomId: 1, 
+      examName: 1,
       courseName: 1, 
       examDuration: 1, 
       examStartedAt: 1,
@@ -45,6 +46,9 @@ export const getRoomWithExamDetails = async (roomId) => {
       maxStudents: 1,
       proctoringLevel: 1,
       startTime: 1,
+      examinerId: 1,
+      examinerName: 1,
+      examinerUsername: 1,
       createdAt: 1,
       questionPublicId: 1,
       questionFileName: 1

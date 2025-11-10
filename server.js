@@ -6,12 +6,15 @@ import "dotenv/config";
 
 import { connectDB } from "./config/db.js";
 import { initializeSocket } from "./services/socket.service.js";
+import { analyticsCache } from "./services/analyticsCache.service.js";
 
 // --- Import routes ---
 import authRoutes from "./routes/auth.routes.js";
 import roomRoutes from "./routes/room.routes.js";
 import createProctoringRoutes from "./routes/proctoring.routes.js";
-import studentRoutes from "./routes/student.routes.js"; 
+import studentRoutes from "./routes/student.routes.js";
+import analyticsRoutes from "./routes/analytics.routes.js";
+import studentAnalyticsRoutes from "./routes/studentAnalytics.routes.js"; 
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -43,6 +46,8 @@ initializeSocket(io);
 app.use("/api/auth", authRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/students", studentRoutes); 
+app.use("/api/analytics", analyticsRoutes);
+app.use("/api/analytics/student", studentAnalyticsRoutes);
 
 // Proctoring routes need the 'io' instance to send real-time alerts
 const proctoringRoutes = createProctoringRoutes(io);
@@ -58,6 +63,12 @@ async function startServer() {
   try {
     // Connect to the database *before* starting the server
     await connectDB();
+
+    // Preload analytics cache
+    await analyticsCache.preloadAnalytics();
+
+    // Start background refresh for analytics (every 1 minute)
+    analyticsCache.startBackgroundRefresh(60000);
 
     server.listen(port, () => {
       console.log(`🚀 Server (Express + Socket.IO) running on port ${port}`);
