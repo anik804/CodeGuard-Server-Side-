@@ -1,6 +1,7 @@
 import { getCollections } from "../config/db.js";
 import { cloudinary } from "../config/cloudinary.js";
 import { rooms } from "../services/socket.service.js"; // Shared socket room map
+import { ObjectId } from "mongodb";
 
 // 📋 Provide monitoring list to extension (monitored websites - all others are allowed, no blocking)
 // Extension will allow all navigation but flag visits to sites NOT in the allowed list
@@ -131,137 +132,159 @@ export const getBlockedWebsites = async (req, res) => {
 };
 
 // Add allowed website to a room (Website Access Control)
-export const addBlockedWebsite = async (req, res) => {
-  try {
-    const { roomId } = req.params;
-    const { website } = req.body;
-    
-    if (!roomId || !website) {
-      return res.status(400).send({ 
-        success: false,
-        message: "Room ID and website are required" 
-      });
-    }
-
-    // Normalize website (remove protocol, www, trailing slash)
-    const normalizedWebsite = website
-      .replace(/^https?:\/\//, '')
-      .replace(/^www\./, '')
-      .replace(/\/$/, '')
-      .toLowerCase();
-
-    const { blockedWebsitesCollection } = getCollections();
-    
-    // Default allowed websites (cannot be removed)
-    const defaultAllowed = [
-      "google.com",
-      "gmail.com",
-      "google.co.uk",
-      "google.ca",
-      "google.com.au",
-    ];
-    
-    // Check if trying to add a default website
-    if (defaultAllowed.includes(normalizedWebsite)) {
-      return res.status(400).send({ 
-        success: false,
-        message: "This website is already allowed by default" 
-      });
-    }
-    
-    // Check if room already has allowed websites
-    const existing = await blockedWebsitesCollection.findOne({ roomId });
-    
-    if (existing) {
-      // Use allowedWebsites field, fallback to websites for backward compatibility
-      const currentAllowed = existing.allowedWebsites || existing.websites || [];
-      if (!currentAllowed.includes(normalizedWebsite)) {
-        await blockedWebsitesCollection.updateOne(
-          { roomId },
-          { 
-            $push: { allowedWebsites: normalizedWebsite },
-            $set: { updatedAt: new Date() }
-          }
-        );
+export const addBlockedWebsite = (io) => {
+  return async (req, res) => {
+    try {
+      const { roomId } = req.params;
+      const { website } = req.body;
+      
+      if (!roomId || !website) {
+        return res.status(400).send({ 
+          success: false,
+          message: "Room ID and website are required" 
+        });
       }
-    } else {
-      // Create new entry with allowedWebsites field
-      await blockedWebsitesCollection.insertOne({
+
+      // Normalize website (remove protocol, www, trailing slash)
+      const normalizedWebsite = website
+        .replace(/^https?:\/\//, '')
+        .replace(/^www\./, '')
+        .replace(/\/$/, '')
+        .toLowerCase();
+
+      const { blockedWebsitesCollection } = getCollections();
+      
+      // Default allowed websites (cannot be removed)
+      const defaultAllowed = [
+        "google.com",
+        "gmail.com",
+        "google.co.uk",
+        "google.ca",
+        "google.com.au",
+      ];
+      
+      // Check if trying to add a default website
+      if (defaultAllowed.includes(normalizedWebsite)) {
+        return res.status(400).send({ 
+          success: false,
+          message: "This website is already allowed by default" 
+        });
+      }
+      
+      // Check if room already has allowed websites
+      const existing = await blockedWebsitesCollection.findOne({ roomId });
+      
+      if (existing) {
+        // Use allowedWebsites field, fallback to websites for backward compatibility
+        const currentAllowed = existing.allowedWebsites || existing.websites || [];
+        if (!currentAllowed.includes(normalizedWebsite)) {
+          await blockedWebsitesCollection.updateOne(
+            { roomId },
+            { 
+              $push: { allowedWebsites: normalizedWebsite },
+              $set: { updatedAt: new Date() }
+            }
+          );
+        }
+      } else {
+        // Create new entry with allowedWebsites field
+        await blockedWebsitesCollection.insertOne({
+          roomId,
+          allowedWebsites: [normalizedWebsite],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+      
+      // ✅ Notify all students in the room to refresh their whitelist
+      console.log(`📢 Broadcasting whitelist update to room ${roomId}`);
+      io.to(roomId).emit("whitelist-updated", {
         roomId,
-        allowedWebsites: [normalizedWebsite],
-        createdAt: new Date(),
-        updatedAt: new Date()
+        action: "added",
+        website: normalizedWebsite,
+        timestamp: new Date().toISOString()
+      });
+      
+      res.status(200).send({
+        success: true,
+        message: "Website added to allowed list successfully"
+      });
+    } catch (err) {
+      console.error("❌ Error adding allowed website:", err);
+      res.status(500).send({ 
+        success: false,
+        message: "Internal server error" 
       });
     }
-    
-    res.status(200).send({
-      success: true,
-      message: "Website added to allowed list successfully"
-    });
-  } catch (err) {
-    console.error("❌ Error adding allowed website:", err);
-    res.status(500).send({ 
-      success: false,
-      message: "Internal server error" 
-    });
-  }
+  };
 };
 
 // Remove allowed website from a room (Website Access Control)
-export const removeBlockedWebsite = async (req, res) => {
-  try {
-    const { roomId } = req.params;
-    const { website } = req.body;
-    
-    if (!roomId || !website) {
-      return res.status(400).send({ 
-        success: false,
-        message: "Room ID and website are required" 
-      });
-    }
-
-    // Default allowed websites (cannot be removed)
-    const defaultAllowed = [
-      "google.com",
-      "gmail.com",
-      "google.co.uk",
-      "google.ca",
-      "google.com.au",
-    ];
-    
-    // Check if trying to remove a default website
-    if (defaultAllowed.includes(website)) {
-      return res.status(400).send({ 
-        success: false,
-        message: "Cannot remove default allowed websites" 
-      });
-    }
-
-    const { blockedWebsitesCollection } = getCollections();
-    
-    // Remove from both allowedWebsites and websites (for backward compatibility)
-    await blockedWebsitesCollection.updateOne(
-      { roomId },
-      { 
-        $pull: { 
-          allowedWebsites: website,
-          websites: website 
-        },
-        $set: { updatedAt: new Date() }
+export const removeBlockedWebsite = (io) => {
+  return async (req, res) => {
+    try {
+      const { roomId } = req.params;
+      const { website } = req.body;
+      
+      if (!roomId || !website) {
+        return res.status(400).send({ 
+          success: false,
+          message: "Room ID and website are required" 
+        });
       }
-    );
-    
-    res.status(200).send({
-      success: true,
-      message: "Website removed from allowed list successfully"
-    });
-  } catch (err) {
-    console.error("❌ Error removing allowed website:", err);
-    res.status(500).send({ 
-      success: false,
-      message: "Internal server error" 
-    });
-  }
+
+      // Default allowed websites (cannot be removed)
+      const defaultAllowed = [
+        "google.com",
+        "gmail.com",
+        "google.co.uk",
+        "google.ca",
+        "google.com.au",
+      ];
+      
+      // Check if trying to remove a default website
+      if (defaultAllowed.includes(website)) {
+        return res.status(400).send({ 
+          success: false,
+          message: "Cannot remove default allowed websites" 
+        });
+      }
+
+      const { blockedWebsitesCollection } = getCollections();
+      
+      // Remove from both allowedWebsites and websites (for backward compatibility)
+      await blockedWebsitesCollection.updateOne(
+        { roomId },
+        { 
+          $pull: { 
+            allowedWebsites: website,
+            websites: website 
+          },
+          $set: { updatedAt: new Date() }
+        }
+      );
+      
+      // ✅ Notify all students in the room to refresh their whitelist
+      console.log(`📢 Broadcasting whitelist update to room ${roomId}`);
+      io.to(roomId).emit("whitelist-updated", {
+        roomId,
+        action: "removed",
+        website: website,
+        timestamp: new Date().toISOString()
+      });
+      
+      res.status(200).send({
+        success: true,
+        message: "Website removed from allowed list successfully"
+      });
+    } catch (err) {
+      console.error("❌ Error removing allowed website:", err);
+      res.status(500).send({ 
+        success: false,
+        message: "Internal server error" 
+      });
+    }
+  };
 };
 
 // 🚨 Handle flagged student activity from extension
@@ -283,30 +306,87 @@ export const flagStudentActivity = (io) => async (req, res) => {
       });
     }
 
-    // ✅ Validate that room exists
-    if (!rooms[roomId]) {
-      console.warn(`⚠️ Flag rejected: Room ${roomId} does not exist`);
-      return res.status(404).send({ 
-        success: false,
-        message: "Room not found. Student must join the exam room first.",
-        ignored: true
-      });
+    // ✅ Validate that room exists (check both memory and database)
+    let room = rooms[roomId];
+    let roomExists = !!room;
+    
+    // If room doesn't exist in memory, check database as fallback
+    if (!roomExists) {
+      console.log(`ℹ️ Room ${roomId} not in memory, checking database...`);
+      const { roomsCollection } = getCollections();
+      const dbRoom = await roomsCollection.findOne({ roomId });
+      
+      if (dbRoom) {
+        console.log(`✅ Room ${roomId} exists in database`);
+        // Create room entry in memory if it exists in database
+        // This handles cases where examiner hasn't joined yet but room exists
+        // Check if exam has started by looking at examStarted flag or startTime
+        // If startTime exists and is in the past, consider exam as started
+        const examStarted = dbRoom.examStarted === true || 
+          (dbRoom.startTime && new Date(dbRoom.startTime) <= new Date());
+        
+        rooms[roomId] = {
+          examiner: null,
+          students: [],
+          examStarted: examStarted, // Use actual exam status from database
+          questionUrl: dbRoom.questionUrl || null
+        };
+        room = rooms[roomId];
+        roomExists = true;
+        console.log(`ℹ️ Room ${roomId} created in memory with examStarted=${examStarted} (from database)`);
+      } else {
+        console.warn(`⚠️ Flag rejected: Room ${roomId} does not exist in memory or database`);
+        console.warn(`⚠️ Available rooms in memory:`, Object.keys(rooms));
+        return res.status(404).send({ 
+          success: false,
+          message: "Room not found. Student must join the exam room first.",
+          ignored: true
+        });
+      }
+    } else {
+      // Room exists in memory - use its examStarted status
+      console.log(`✅ Room ${roomId} exists in memory with examStarted=${room.examStarted}`);
     }
 
-    // ✅ Validate that student is actually in the room
-    const room = rooms[roomId];
+    // ✅ Validate that student is actually in the room (more lenient matching)
     const studentInRoom = room.students && room.students.some(
-      s => s.studentId === studentId || s.socketId === studentId
+      s => {
+        // Check multiple possible matches with type coercion
+        const matches = 
+          s.studentId === studentId || 
+          s.socketId === studentId ||
+          String(s.studentId) === String(studentId) ||
+          String(s.socketId) === String(studentId) ||
+          String(s.studentId).toLowerCase() === String(studentId).toLowerCase();
+        return matches;
+      }
     );
 
-    if (!studentInRoom) {
-      console.warn(`⚠️ Flag rejected: Student ${studentId} is not in room ${roomId}`);
-      console.warn(`⚠️ Room students:`, room.students?.map(s => ({ studentId: s.studentId, socketId: s.socketId })));
-      return res.status(403).send({ 
-        success: false,
-        message: "Student not in room. Please join the exam room first.",
-        ignored: true
-      });
+    // If student not found in room, but room exists, allow the flag anyway
+    // (student might have joined via web but socket connection hasn't registered yet)
+    if (!studentInRoom && room.students && room.students.length > 0) {
+      console.warn(`⚠️ Student ${studentId} not found in room ${roomId} students list`);
+      console.warn(`⚠️ Room students:`, room.students?.map(s => ({ studentId: s.studentId, socketId: s.socketId, name: s.name })));
+      console.warn(`⚠️ Looking for studentId: "${studentId}" (type: ${typeof studentId})`);
+      
+      // Try to find the student by checking if they're in the room but with different ID format
+      const possibleMatch = room.students?.find(s => 
+        String(s.studentId).includes(String(studentId)) || 
+        String(s.socketId).includes(String(studentId)) ||
+        String(studentId).includes(String(s.studentId)) ||
+        String(studentId).includes(String(s.socketId))
+      );
+      
+      if (!possibleMatch) {
+        // If room exists but student not registered, still allow flag but log warning
+        console.warn(`⚠️ Student ${studentId} not registered in room, but allowing flag anyway (room exists)`);
+        // Continue processing - don't reject the flag
+      } else {
+        console.log(`ℹ️ Found possible match:`, possibleMatch);
+      }
+    } else if (!studentInRoom && (!room.students || room.students.length === 0)) {
+      // Room exists but no students registered yet - allow flag anyway
+      console.log(`ℹ️ Room ${roomId} exists but no students registered yet - allowing flag`);
     }
 
     // ✅ Only accept flags if exam has started
