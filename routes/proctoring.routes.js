@@ -24,10 +24,10 @@ const createProctoringRoutes = (io) => {
   // We inject 'io' so the controller can send a socket event
   router.post("/flag", flagStudentActivity(io));
 
-  // Blocked websites management
+  // Blocked websites management - for examiner dashboard
   router.get("/blocked-websites/:roomId", getBlockedWebsites);
-  router.post("/blocked-websites/:roomId", addBlockedWebsite);
-  router.delete("/blocked-websites/:roomId", removeBlockedWebsite);
+  router.post("/blocked-websites/:roomId", addBlockedWebsite(io)); // ✅ Inject io
+  router.delete("/blocked-websites/:roomId", removeBlockedWebsite(io)); // ✅ Inject io
 
   return router;
 };

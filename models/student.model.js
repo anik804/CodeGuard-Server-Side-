@@ -17,3 +17,10 @@ export const createStudent = async (userData) => {
   return await getStudentCollection().insertOne(userData);
 };
 
+export const updateStudentById = async (studentId, updateData) => {
+  const result = await getStudentCollection().updateOne(
+    { studentId },
+    { $set: updateData } // $set দিয়ে update হবে
+  );
+  return result;
+};

@@ -16,6 +16,7 @@ import studentRoutes from "./routes/student.routes.js";
 import analyticsRoutes from "./routes/analytics.routes.js";
 import studentAnalyticsRoutes from "./routes/studentAnalytics.routes.js";
 import studentSubmissionRoutes from "./routes/studentSubmission.routes.js"; 
+// import examinerRoutes from "./routes/examiner.route.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -47,6 +48,7 @@ initializeSocket(io);
 app.use("/api/auth", authRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/students", studentRoutes); 
+// app.use("/api/examiners", examinerRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/analytics/student", studentAnalyticsRoutes);
 app.use("/api/submissions", studentSubmissionRoutes);
