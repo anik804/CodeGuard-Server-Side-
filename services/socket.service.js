@@ -1,5 +1,9 @@
 // Store room information in memory
-export const rooms = {}; 
+export const rooms = {};
+
+// Import exam summary model (dynamic import to avoid circular dependency)
+let examSummaryModel = null;
+let getCollections = null; 
 
 export const initializeSocket = (io) => {
   io.on("connection", (socket) => {
@@ -89,9 +93,73 @@ export const initializeSocket = (io) => {
     });
 
     // Handle exam end event
-    socket.on("exam-end", ({ roomId }) => {
+    socket.on("exam-end", async ({ roomId }) => {
       if (rooms[roomId] && rooms[roomId].examiner === socket.id) {
         rooms[roomId].examStarted = false;
+        
+        // ✅ SAVE EXAM SUMMARY TO DATABASE
+        try {
+          // Dynamic import to avoid circular dependency
+          if (!examSummaryModel) {
+            examSummaryModel = await import('../models/examSummary.model.js');
+          }
+          if (!getCollections) {
+            const dbModule = await import('../config/db.js');
+            getCollections = dbModule.getCollections;
+          }
+
+          const room = rooms[roomId];
+          const students = room.students || [];
+          
+          // Get room details from database
+          const { roomsCollection, activityLogsCollection, studentSubmissionsCollection } = getCollections();
+          const roomDetails = await roomsCollection.findOne({ roomId });
+          
+          // Get flagged students count
+          const flaggedCount = await activityLogsCollection.countDocuments({ roomId });
+          
+          // Get submissions count
+          const submissionsCount = await studentSubmissionsCollection.countDocuments({ roomId });
+          
+          // Get unique students who submitted
+          const studentsWithSubmissions = await studentSubmissionsCollection.distinct('studentId', { roomId });
+          
+          // Check if summary already exists (avoid duplicates)
+          const existingSummary = await examSummaryModel.getExamSummaryByRoomId(roomId);
+          if (!existingSummary) {
+            // Create exam summary
+            const examSummary = {
+              roomId,
+              examName: roomDetails?.examName || roomDetails?.courseName || roomId,
+              courseName: roomDetails?.courseName || null,
+              examinerId: roomDetails?.examinerId || null,
+              examinerUsername: roomDetails?.examinerUsername || null,
+              examinerName: roomDetails?.examinerName || null,
+              examStartedAt: roomDetails?.examStartedAt || roomDetails?.startTime || null,
+              examEndedAt: new Date(),
+              examDuration: roomDetails?.examDuration || null, // in minutes
+              totalStudentsJoined: students.length,
+              students: students.map(s => ({
+                studentId: s.studentId,
+                studentName: s.name,
+                joinedAt: s.joinedAt,
+              })),
+              flaggedStudentsCount: flaggedCount,
+              submissionsCount: submissionsCount,
+              studentsWithSubmissions: studentsWithSubmissions.length,
+              status: 'completed',
+            };
+            
+            // Save to database
+            await examSummaryModel.createExamSummary(examSummary);
+            console.log(`✅ Exam summary saved for room ${roomId} with ${students.length} students`);
+          } else {
+            console.log(`ℹ️ Exam summary already exists for room ${roomId}, skipping duplicate`);
+          }
+        } catch (error) {
+          console.error('❌ Error saving exam summary:', error);
+          // Don't block exam end if summary save fails
+        }
         
         // Notify all students to disconnect and stop screen sharing
         io.to(roomId).emit("exam-ended", { 

@@ -11,6 +11,7 @@ let roomsCollection;
 let activityLogsCollection;
 let blockedWebsitesCollection;
 let studentSubmissionsCollection;
+let examSummariesCollection;
 
 export async function connectDB() {
   try {
@@ -24,8 +25,9 @@ export async function connectDB() {
     activityLogsCollection = db.collection("activityLogs");
     blockedWebsitesCollection = db.collection("blockedWebsites");
     studentSubmissionsCollection = db.collection("studentSubmissions");
+    examSummariesCollection = db.collection("examSummaries");
 
-    return { studentsCollection, examinersCollection, roomsCollection, db, activityLogsCollection, blockedWebsitesCollection, studentSubmissionsCollection };
+    return { studentsCollection, examinersCollection, roomsCollection, db, activityLogsCollection, blockedWebsitesCollection, studentSubmissionsCollection, examSummariesCollection };
   } catch (err) {
     console.error("Failed to connect to MongoDB", err);
     process.exit(1); // Exit process with failure
@@ -33,5 +35,5 @@ export async function connectDB() {
 }
 
 export function getCollections() {
-  return { studentsCollection, examinersCollection, roomsCollection, db, activityLogsCollection, blockedWebsitesCollection, studentSubmissionsCollection };
+  return { studentsCollection, examinersCollection, roomsCollection, db, activityLogsCollection, blockedWebsitesCollection, studentSubmissionsCollection, examSummariesCollection };
 }
