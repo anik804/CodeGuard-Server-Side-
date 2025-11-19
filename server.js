@@ -15,7 +15,8 @@ import createProctoringRoutes from "./routes/proctoring.routes.js";
 import studentRoutes from "./routes/student.routes.js";
 import analyticsRoutes from "./routes/analytics.routes.js";
 import studentAnalyticsRoutes from "./routes/studentAnalytics.routes.js";
-import studentSubmissionRoutes from "./routes/studentSubmission.routes.js"; 
+import studentSubmissionRoutes from "./routes/studentSubmission.routes.js";
+import examHistoryRoutes from "./routes/examHistory.routes.js";
 // import examinerRoutes from "./routes/examiner.route.js";
 
 const app = express();
@@ -52,6 +53,8 @@ app.use("/api/students", studentRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/analytics/student", studentAnalyticsRoutes);
 app.use("/api/submissions", studentSubmissionRoutes);
+app.use("/api/exam-history", examHistoryRoutes);
+console.log("✅ Exam history routes registered at /api/exam-history");
 
 // Proctoring routes need the 'io' instance to send real-time alerts
 const proctoringRoutes = createProctoringRoutes(io);
