@@ -1,7 +1,29 @@
 import { AuthService } from "../services/auth.service.js";
+import { clientConfig } from "../config/client.config.js";
+
+// Helper function to set CORS headers
+const setCorsHeaders = (req, res) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = clientConfig.allowedOrigins;
+
+  if (origin && allowedOrigins.some(allowed => {
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    const normalizedAllowed = allowed.replace(/\/$/, '');
+    return normalizedOrigin === normalizedAllowed || 
+           normalizedOrigin.toLowerCase() === normalizedAllowed.toLowerCase();
+  })) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+};
 
 export const register = async (req, res) => {
   try {
+    // Set CORS headers
+    setCorsHeaders(req, res);
+
     const { role, password } = req.body;
 
     if (!role || !password) {
@@ -49,6 +71,9 @@ export const register = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
+    // Set CORS headers
+    setCorsHeaders(req, res);
+
     const { role, password } = req.body;
     let user;
 

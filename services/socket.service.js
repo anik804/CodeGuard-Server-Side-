@@ -234,20 +234,61 @@ export const initializeSocket = (io) => {
 
     // Handle examiner response to leave request
     socket.on("examiner-respond-leave", ({ roomId, studentSocketId, approved }) => {
+      console.log(`📤 Leave request response received for student ${studentSocketId} in room ${roomId}, approved: ${approved}`);
+      
       if (rooms[roomId] && rooms[roomId].examiner === socket.id) {
+        // Find student by socketId to get the actual socket.id
+        const studentInfo = rooms[roomId].students.find(s => 
+          s.socketId === studentSocketId || 
+          String(s.socketId) === String(studentSocketId)
+        );
+        
+        const actualSocketId = studentInfo?.socketId || studentSocketId;
+        console.log(`🔍 Found student for leave response:`, studentInfo ? `${studentInfo.name} (${studentInfo.studentId})` : 'not found');
+        console.log(`🔍 Using socketId: ${actualSocketId}`);
+        
         if (approved) {
+          // Remove student from room when approved
+          if (studentInfo) {
+            const studentIndex = rooms[roomId].students.findIndex(s => s.socketId === actualSocketId);
+            if (studentIndex > -1) {
+              rooms[roomId].students.splice(studentIndex, 1);
+              console.log(`🚫 Removed student ${studentInfo.name} from room after leave approval`);
+            }
+            
+            // Notify examiner that student was removed
+            io.to(socket.id).emit("student-removed", {
+              socketId: actualSocketId,
+              studentId: studentInfo.studentId,
+              studentName: studentInfo.name
+            });
+            
+            // Broadcast updated student list
+            io.to(socket.id).emit("current-students", rooms[roomId].students);
+          }
+          
           // Notify student they can leave
-          io.to(studentSocketId).emit("leave-request-approved", {
+          io.to(actualSocketId).emit("leave-request-approved", {
             message: "Your leave request has been approved. You may now exit the exam."
           });
-          console.log(`✅ Examiner approved leave request for student ${studentSocketId}`);
+          
+          // Force disconnect the student
+          const studentSocket = io.sockets.sockets.get(actualSocketId);
+          if (studentSocket) {
+            studentSocket.disconnect();
+            console.log(`✅ Disconnected student socket: ${actualSocketId}`);
+          }
+          
+          console.log(`✅ Examiner approved leave request for student ${actualSocketId}`);
         } else {
           // Notify student request denied
-          io.to(studentSocketId).emit("leave-request-denied", {
+          io.to(actualSocketId).emit("leave-request-denied", {
             message: "Your leave request has been denied. Please continue with the exam."
           });
-          console.log(`❌ Examiner denied leave request for student ${studentSocketId}`);
+          console.log(`❌ Examiner denied leave request for student ${actualSocketId}`);
         }
+      } else {
+        console.warn(`⚠️ Leave response denied: Room ${roomId} not found or socket ${socket.id} is not the examiner`);
       }
     });
 

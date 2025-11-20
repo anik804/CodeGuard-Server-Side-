@@ -7,6 +7,7 @@ import fs, { access } from "fs";
 import { imagekit } from "../config/imagekit.js";
 import { rooms } from "../services/socket.service.js";
 import { getCollections } from "../config/db.js";
+import { clientConfig } from "../config/client.config.js";
 
 // Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -273,13 +274,9 @@ export const uploadExamQuestion = async (req, res) => {
     console.log(`📤 File verified. Size on disk: ${stats.size} bytes`);
 
     // Verify ImageKit is configured
-    if (
-      !process.env.IMAGEKIT_PUBLIC_KEY ||
-      !process.env.IMAGEKIT_PRIVATE_KEY ||
-      !process.env.IMAGEKIT_URL_ENDPOINT
-    ) {
+    if (!imagekit) {
       console.error("❌ ImageKit is not properly configured!");
-      console.error("❌ Missing:", {
+      console.error("❌ Missing environment variables:", {
         publicKey: !process.env.IMAGEKIT_PUBLIC_KEY,
         privateKey: !process.env.IMAGEKIT_PRIVATE_KEY,
         urlEndpoint: !process.env.IMAGEKIT_URL_ENDPOINT,
@@ -287,7 +284,7 @@ export const uploadExamQuestion = async (req, res) => {
       return res.status(500).json({
         success: false,
         message:
-          "ImageKit configuration is missing. Please check your environment variables.",
+          "ImageKit configuration is missing. Please check your environment variables (IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, IMAGEKIT_URL_ENDPOINT).",
       });
     }
 
@@ -450,6 +447,15 @@ export const getExamQuestion = async (req, res) => {
 // This is much more efficient than proxying - client downloads directly from ImageKit
 export const getExamQuestionProxy = async (req, res) => {
   try {
+    // Verify ImageKit is configured
+    if (!imagekit) {
+      console.error("❌ ImageKit is not properly configured!");
+      return res.status(500).json({
+        success: false,
+        message:
+          "ImageKit configuration is missing. Please check your environment variables (IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, IMAGEKIT_URL_ENDPOINT).",
+      });
+    }
     const { roomId } = req.params;
 
     if (!roomId) {
@@ -495,9 +501,9 @@ export const getExamQuestionProxy = async (req, res) => {
 
       // Set CORS headers
       const origin = req.headers.origin;
-      const allowedOrigin = process.env.CLIENT_URL || "http://localhost:5173";
+      const allowedOrigins = clientConfig.allowedOrigins;
 
-      if (origin === allowedOrigin) {
+      if (origin && allowedOrigins.includes(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Access-Control-Allow-Credentials", "true");
       }

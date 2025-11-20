@@ -67,6 +67,17 @@ export const uploadStudentSubmission = async (req, res) => {
 
     const filePath = req.file.path;
     const fileName = req.file.originalname || req.file.filename;
+    
+    // Verify ImageKit is configured
+    if (!imagekit) {
+      console.error("❌ ImageKit is not properly configured!");
+      return res.status(500).json({
+        success: false,
+        message:
+          "ImageKit configuration is missing. Please check your environment variables (IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, IMAGEKIT_URL_ENDPOINT).",
+      });
+    }
+    
     const fileBuffer = fs.readFileSync(filePath);
 
     // Upload to ImageKit
@@ -183,6 +194,16 @@ export const getSubmissionDownloadUrl = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Submission not found"
+      });
+    }
+
+    // Verify ImageKit is configured
+    if (!imagekit) {
+      console.error("❌ ImageKit is not properly configured!");
+      return res.status(500).json({
+        success: false,
+        message:
+          "ImageKit configuration is missing. Please check your environment variables (IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, IMAGEKIT_URL_ENDPOINT).",
       });
     }
 

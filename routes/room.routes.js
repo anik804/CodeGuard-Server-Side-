@@ -1,14 +1,15 @@
 import express from "express";
 import * as roomController from "../controllers/room.controller.js";
+import { clientConfig } from "../config/client.config.js";
 
 const router = express.Router();
 
 // Handle OPTIONS request for CORS preflight
 router.options("/:roomId/question/download", (req, res) => {
   const origin = req.headers.origin;
-  const allowedOrigin = process.env.CLIENT_URL || 'http://localhost:5173';
+  const allowedOrigins = clientConfig.allowedOrigins;
   
-  if (origin === allowedOrigin) {
+  if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
   }
