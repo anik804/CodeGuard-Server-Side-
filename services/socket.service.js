@@ -253,27 +253,70 @@ export const initializeSocket = (io) => {
 
     // Handle examiner kick student
     socket.on("examiner-kick-student", ({ roomId, studentSocketId, reason }) => {
+      console.log(`🚫 Kick request received for student ${studentSocketId} in room ${roomId}`);
+      
       if (rooms[roomId] && rooms[roomId].examiner === socket.id) {
-        // Notify student they've been kicked
-        io.to(studentSocketId).emit("student-kicked", {
-          message: reason || "You have been removed from the exam by the examiner.",
-          reason: reason || "Removed by examiner"
-        });
+        // Find student info before removing - try multiple matching strategies
+        let studentIndex = rooms[roomId].students.findIndex(s => s.socketId === studentSocketId);
+        let studentInfo = null;
         
-        // Force disconnect the student
-        io.to(studentSocketId).emit("force-disconnect");
-        const studentSocket = io.sockets.sockets.get(studentSocketId);
-        if (studentSocket) {
-          studentSocket.disconnect();
+        // If not found by socketId, try by studentId (in case socketId passed is actually studentId)
+        if (studentIndex === -1) {
+          studentIndex = rooms[roomId].students.findIndex(s => 
+            s.studentId === studentSocketId || 
+            String(s.studentId) === String(studentSocketId)
+          );
         }
-
-        // Remove from room
-        const studentIndex = rooms[roomId].students.findIndex(s => s.socketId === studentSocketId);
+        
         if (studentIndex > -1) {
-          const studentInfo = rooms[roomId].students[studentIndex];
+          studentInfo = rooms[roomId].students[studentIndex];
+          const actualSocketId = studentInfo.socketId || studentSocketId;
+          
+          console.log(`✅ Found student to kick: ${studentInfo.name} (${studentInfo.studentId}) with socketId: ${actualSocketId}`);
+          
+          // Notify student they've been kicked
+          io.to(actualSocketId).emit("student-kicked", {
+            message: reason || "You have been removed from the exam by the examiner.",
+            reason: reason || "Removed by examiner"
+          });
+          
+          // Force disconnect the student
+          io.to(actualSocketId).emit("force-disconnect");
+          const studentSocket = io.sockets.sockets.get(actualSocketId);
+          if (studentSocket) {
+            studentSocket.disconnect();
+            console.log(`✅ Disconnected student socket: ${actualSocketId}`);
+          } else {
+            console.warn(`⚠️ Student socket ${actualSocketId} not found in active sockets`);
+          }
+
+          // Remove from room
           rooms[roomId].students.splice(studentIndex, 1);
-          console.log(`🚫 Examiner kicked student ${studentInfo.name} (${studentInfo.studentId}) from room ${roomId}`);
+          console.log(`🚫 Removed student ${studentInfo.name} (${studentInfo.studentId}) from room ${roomId}. Remaining: ${rooms[roomId].students.length}`);
+          
+          // Notify examiner that student was removed (so UI updates)
+          const examinerSocketId = rooms[roomId].examiner;
+          console.log(`📤 Notifying examiner ${examinerSocketId} about removed student`);
+          io.to(examinerSocketId).emit("student-removed", {
+            socketId: actualSocketId,
+            studentId: studentInfo.studentId,
+            studentName: studentInfo.name
+          });
+          
+          // Also broadcast updated student list to examiner
+          io.to(examinerSocketId).emit("current-students", rooms[roomId].students);
+          console.log(`📤 Updated student list sent to examiner. Count: ${rooms[roomId].students.length}`);
+        } else {
+          console.warn(`⚠️ Student with socketId ${studentSocketId} not found in room ${roomId}`);
+          console.warn(`⚠️ Available students in room:`, rooms[roomId].students.map(s => ({ 
+            socketId: s.socketId, 
+            studentId: s.studentId, 
+            name: s.name 
+          })));
         }
+      } else {
+        console.warn(`⚠️ Kick request denied: Room ${roomId} not found or socket ${socket.id} is not the examiner`);
+        console.warn(`⚠️ Examiner for room: ${rooms[roomId]?.examiner}, Current socket: ${socket.id}`);
       }
     });
 
