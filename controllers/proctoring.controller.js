@@ -466,6 +466,25 @@ export const flagStudentActivity = (io) => async (req, res) => {
       console.warn("⚠️ No screenshot data provided, continuing with flag report");
     }
 
+    // Find student's socketId from room.students for matching in frontend
+    let studentSocketId = null;
+    if (room.students && room.students.length > 0) {
+      const matchedStudent = room.students.find(s => 
+        s.studentId === studentId || 
+        s.socketId === studentId ||
+        String(s.studentId) === String(studentId) ||
+        String(s.socketId) === String(studentId) ||
+        String(s.studentId).toLowerCase() === String(studentId).toLowerCase()
+      );
+      
+      if (matchedStudent) {
+        studentSocketId = matchedStudent.socketId;
+        console.log(`✅ Found student in room with socketId: ${studentSocketId}`);
+      } else {
+        console.warn(`⚠️ Student ${studentId} not found in room students list for socketId lookup`);
+      }
+    }
+
     // 🗃️ Save to MongoDB (activityLogs collection)
     const { activityLogsCollection } = getCollections();
 
@@ -473,6 +492,7 @@ export const flagStudentActivity = (io) => async (req, res) => {
       studentId,
       studentName: studentName || null,
       roomId,
+      socketId: studentSocketId, // Include socketId for frontend matching
       illegalUrl: url, // Store the resolved URL
       blockedUrl: blockedUrl || illegalUrl || url, // Store both for compatibility
       screenshotUrl: screenshotUrl,
@@ -483,6 +503,7 @@ export const flagStudentActivity = (io) => async (req, res) => {
     console.log(`✅ Flag log saved successfully for student ${studentId}`);
     console.log(`📝 Log entry:`, {
       studentId: logEntry.studentId,
+      socketId: logEntry.socketId,
       roomId: logEntry.roomId,
       url: logEntry.illegalUrl,
       hasScreenshot: !!logEntry.screenshotUrl,
@@ -494,7 +515,7 @@ export const flagStudentActivity = (io) => async (req, res) => {
       const examinerSocketId = rooms[roomId].examiner;
       io.to(examinerSocketId).emit("student-flagged", logEntry);
       console.log(`🚨 Student ${studentId} flagged for visiting: ${url}`);
-      console.log(`📡 Notification sent to examiner: ${examinerSocketId}`);
+      console.log(`📡 Notification sent to examiner: ${examinerSocketId} with socketId: ${studentSocketId}`);
     } else {
       console.warn(`⚠️ Examiner not found for room: ${roomId}`);
       console.warn(`⚠️ Available rooms:`, Object.keys(rooms));
