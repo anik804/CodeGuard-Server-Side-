@@ -7,6 +7,7 @@ import "dotenv/config";
 import { connectDB } from "./config/db.js";
 import { initializeSocket } from "./services/socket.service.js";
 import { analyticsCache } from "./services/analyticsCache.service.js";
+import { clientConfig } from "./config/client.config.js";
 
 // --- Import routes ---
 import authRoutes from "./routes/auth.routes.js";
@@ -22,13 +23,44 @@ import examHistoryRoutes from "./routes/examHistory.routes.js";
 const app = express();
 const port = process.env.PORT || 3000;
 
+
 // --- Middleware ---
-// CORS configuration - allow specific origin with credentials
+// CORS configuration - using centralized client config
+const allowedOrigins = clientConfig.allowedOrigins;
+
+// Log allowed origins for debugging
+console.log('🔒 CORS Allowed Origins:', allowedOrigins);
+
+// Configure CORS with explicit origin matching
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list (case-insensitive, without trailing slash)
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    const isAllowed = allowedOrigins.some(allowed => {
+      const normalizedAllowed = allowed.replace(/\/$/, '');
+      return normalizedOrigin === normalizedAllowed || 
+             normalizedOrigin.toLowerCase() === normalizedAllowed.toLowerCase();
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️ CORS: Blocked request from origin: ${origin}`);
+      console.warn(`   Allowed origins:`, allowedOrigins);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Type'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 app.use(express.json({ limit: "10mb" })); // Increase JSON payload limit for Base64 screenshots
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
