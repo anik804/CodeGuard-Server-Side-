@@ -23,6 +23,7 @@ import examHistoryRoutes from "./routes/examHistory.routes.js";
 const app = express();
 const port = process.env.PORT || 3000;
 
+
 // --- Middleware ---
 // CORS configuration - using centralized client config
 const allowedOrigins = clientConfig.allowedOrigins;
